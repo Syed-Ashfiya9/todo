@@ -1,0 +1,273 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Simple Todo App</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <style>
+    /* Basic, clean styling */
+    body {
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
+      background: #f5f7fb;
+      color: #222;
+      display: flex;
+      justify-content: center;
+      padding: 40px 16px;
+    }
+    .container {
+      width: 100%;
+      max-width: 700px;
+      background: #fff;
+      border-radius: 12px;
+      box-shadow: 0 6px 20px rgba(25, 35, 50, 0.08);
+      padding: 24px;
+    }
+    h1 { margin: 0 0 14px; font-size: 20px; }
+    .controls {
+      display:flex;
+      gap:8px;
+      margin-bottom: 14px;
+    }
+    .controls button {
+      padding: 8px 12px;
+      border-radius: 8px;
+      border: 1px solid #d7deea;
+      background: #f7fafc;
+      cursor:pointer;
+    }
+    .controls button.primary {
+      background:#2b6cb0;color:#fff;border-color:transparent;
+    }
+    .info { color:#556; font-size:13px; margin-bottom:12px; }
+    ul.todos {
+      list-style:none;
+      padding:0;
+      margin:0;
+      display:flex;
+      flex-direction:column;
+      gap:10px;
+    }
+    li.todo {
+      display:flex;
+      align-items:center;
+      gap:12px;
+      padding:12px;
+      border-radius:10px;
+      border:1px solid #edf2f7;
+      background: #fff;
+    }
+    .title {
+      flex:1;
+      font-size:15px;
+      word-break:break-word;
+    }
+    .title.completed { text-decoration:line-through; color: #6b7280; }
+    .meta { font-size:12px; color:#666; margin-right:12px; }
+    .btn {
+      border: 1px solid #e2e8f0;
+      padding:6px 8px;
+      border-radius:8px;
+      background:#fff;
+      cursor:pointer;
+      font-size:13px;
+    }
+    .btn.delete { color:#9b2c2c; border-color: #fecaca;background:#fff6f6; }
+    .btn.toggle { color:#2b6cb0; border-color:#cfe3fb; }
+    .empty { text-align:center; color:#64748b; padding:28px 0; }
+    footer { margin-top:16px; font-size:13px; color:#666; text-align:center; }
+    small.link { color:#3182CE; cursor:pointer; text-decoration:underline; }
+  </style>
+</head>
+<body>
+  <div class="container" role="main">
+    <h1>Simple Todo App</h1>
+    <div class="info">Data fetched from <code>jsonplaceholder.typicode.com/todos</code>. Only first 20 todos are stored locally.</div>
+
+    <div class="controls">
+      <button id="fetchBtn" class="primary">Fetch & Store First 20 Todos</button>
+      <button id="clearBtn" title="Clear local todos">Clear Local Todos</button>
+      <button id="refreshBtn">Refresh UI</button>
+    </div>
+
+    <ul class="todos" id="todoList" aria-live="polite"></ul>
+
+    <div class="empty" id="emptyMessage" style="display:none">No Todos Available</div>
+
+    <footer>
+      <small>Tip: delete or toggle items — changes are saved to <code>localStorage</code>.</small>
+    </footer>
+  </div>
+
+  <script>
+    /**
+     * Keys & constants
+     */
+    const TODOS_KEY = 'todos';
+    const API_URL = 'https://jsonplaceholder.typicode.com/todos';
+
+    /**
+     * Fetch todos from external API and store first 20 in localStorage.
+     */
+    async function fetchTodosAndStore() {
+      try {
+        const resp = await fetch(API_URL);
+        if (!resp.ok) throw new Error('Failed to fetch todos');
+        const data = await resp.json();
+        // Keep only first 20 items
+        const first20 = data.slice(0, 20).map(item => ({
+          id: item.id,        // keep original id (unique)
+          title: item.title,
+          completed: !!item.completed
+        }));
+        saveTodosToLocalStorage(first20);
+        renderTodos();
+      } catch (err) {
+        alert('Error fetching todos: ' + err.message);
+        console.error(err);
+      }
+    }
+
+    /**
+     * Save todos array to localStorage (stringified)
+     * @param {Array} todos
+     */
+    function saveTodosToLocalStorage(todos) {
+      localStorage.setItem(TODOS_KEY, JSON.stringify(todos));
+    }
+
+    /**
+     * Retrieve todos array from localStorage.
+     * Returns [] if nothing stored or invalid data.
+     */
+    function getTodosFromLocalStorage() {
+      try {
+        const raw = localStorage.getItem(TODOS_KEY);
+        if (!raw) return [];
+        const parsed = JSON.parse(raw);
+        if (!Array.isArray(parsed)) return [];
+        return parsed;
+      } catch (err) {
+        console.warn('Invalid localStorage todos:', err);
+        return [];
+      }
+    }
+
+    /**
+     * Delete todo by id. Update localStorage and re-render.
+     * @param {number|string} id
+     */
+    function deleteTodo(id) {
+      const todos = getTodosFromLocalStorage();
+      const filtered = todos.filter(t => String(t.id) !== String(id));
+      saveTodosToLocalStorage(filtered);
+      renderTodos();
+    }
+
+    /**
+     * Toggle completed status for a todo by id.
+     * @param {number|string} id
+     */
+    function toggleTodoCompleted(id) {
+      const todos = getTodosFromLocalStorage();
+      const updated = todos.map(t => {
+        if (String(t.id) === String(id)) return {...t, completed: !t.completed};
+        return t;
+      });
+      saveTodosToLocalStorage(updated);
+      renderTodos();
+    }
+
+    /**
+     * Render todos to UI.
+     * Creates DOM nodes and mounts them into #todoList.
+     */
+    function renderTodos() {
+      const listEl = document.getElementById('todoList');
+      const emptyEl = document.getElementById('emptyMessage');
+      listEl.innerHTML = ''; // clear
+
+      const todos = getTodosFromLocalStorage();
+
+      if (!todos.length) {
+        emptyEl.style.display = 'block';
+        return;
+      } else {
+        emptyEl.style.display = 'none';
+      }
+
+      // Render each todo
+      todos.forEach(todo => {
+        const li = document.createElement('li');
+        li.className = 'todo';
+        li.dataset.id = String(todo.id);
+
+        // Checkbox or status marker
+        const status = document.createElement('div');
+        status.className = 'meta';
+        status.textContent = todo.completed ? 'Completed' : 'Pending';
+        li.appendChild(status);
+
+        // Title
+        const title = document.createElement('div');
+        title.className = 'title' + (todo.completed ? ' completed' : '');
+        title.textContent = todo.title;
+        li.appendChild(title);
+
+        // Toggle button
+        const toggleBtn = document.createElement('button');
+        toggleBtn.className = 'btn toggle';
+        toggleBtn.textContent = todo.completed ? 'Mark Incomplete' : 'Mark Complete';
+        toggleBtn.setAttribute('aria-label', (todo.completed ? 'Mark incomplete ' : 'Mark complete ') + todo.title);
+        toggleBtn.addEventListener('click', () => toggleTodoCompleted(todo.id));
+        li.appendChild(toggleBtn);
+
+        // Delete button
+        const delBtn = document.createElement('button');
+        delBtn.className = 'btn delete';
+        delBtn.textContent = 'Delete';
+        delBtn.setAttribute('aria-label', 'Delete ' + todo.title);
+        delBtn.addEventListener('click', () => {
+          const ok = confirm('Delete this todo?\\n' + todo.title);
+          if (ok) deleteTodo(todo.id);
+        });
+        li.appendChild(delBtn);
+
+        listEl.appendChild(li);
+      });
+    }
+
+    /**
+     * Clear all todos from localStorage and re-render
+     */
+    function clearTodos() {
+      localStorage.removeItem(TODOS_KEY);
+      renderTodos();
+    }
+
+    /**
+     * Wire up buttons and initialize UI
+     */
+    function init() {
+      document.getElementById('fetchBtn').addEventListener('click', fetchTodosAndStore);
+      document.getElementById('clearBtn').addEventListener('click', () => {
+        const ok = confirm('Clear all stored todos from localStorage?');
+        if (ok) clearTodos();
+      });
+      document.getElementById('refreshBtn').addEventListener('click', renderTodos);
+
+      // initial render from localStorage
+      renderTodos();
+
+      // optional: auto-fetch if there are no todos yet
+      if (getTodosFromLocalStorage().length === 0) {
+        // don't auto-run fetch without user action to respect user's control.
+        // You can enable auto-fetch by uncommenting next line:
+        // fetchTodosAndStore();
+      }
+    }
+
+    // run init on DOM ready
+    document.addEventListener('DOMContentLoaded', init);
+  </script>
+</body>
+</html>ss
